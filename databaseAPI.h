@@ -14,8 +14,8 @@
 using namespace std;
 
 #define BILLION 1000000000L
-//#define RECORDS_PER_THREAD (3251041/12)
-#define RECORDS_PER_THREAD 1
+#define RECORDS_PER_THREAD (3251041/12)
+//#define RECORDS_PER_THREAD 1
 
 class FFError
 {
@@ -31,7 +31,7 @@ public:
 void add_session(MYSQL *Conn, std::string &cacheId, uint64_t &resourceSize, uint64_t &resourceCreated, string &resourceHeader, string &resourceUrl)
 {
     void *bin_data = rawDataOne;
-    size_t bin_size = 4425; //7; //4425; // -- ...and the size of the binary data
+    size_t bin_size = 4425; // -- ...and the size of the binary data
 
     try
     {
@@ -55,7 +55,6 @@ void add_session(MYSQL *Conn, std::string &cacheId, uint64_t &resourceSize, uint
     catch (FFError e)
     {
         printf("\n1 ERROR while inserting data to db : %s\n", e.Label.c_str());
-        //return 1;
     }
     catch (const std::exception &e)
     {
@@ -122,9 +121,6 @@ void workerThreadInsert(int arg)
     printf("writter thread [%d] started at [%d] for [%d] entries\n", arg, startTime, RECORDS_PER_THREAD);
     try
     {
-        //int mysqlStatus = 0;
-        //MYSQL_RES *mysqlResult = NULL;
-
         int count = 0;
         while (count < RECORDS_PER_THREAD)
         {
@@ -148,7 +144,6 @@ void workerThreadInsert(int arg)
     catch (FFError e)
     {
         printf("\n3. ERROR while inserting data to db : %s\n", e.Label.c_str());
-        //return 1;
     }
     catch (const std::exception &e)
     {
@@ -191,12 +186,12 @@ void workerThreadRead(int arg)
         printf("\n1. ERROR while reading data from db : %s\n", e.Label.c_str());
     }
 
-
-
     time_t startTime = time(0);
     printf("reader thread [%d] started at [%d] for [%d] entries\n", arg, startTime, RECORDS_PER_THREAD);
     try
     {
+        int mysqlStatus = 0;
+        MYSQL_RES *mysqlResult = NULL;
         int count = 0;
         while (count < RECORDS_PER_THREAD)
         {
@@ -205,13 +200,46 @@ void workerThreadRead(int arg)
             std::string cacheId;
             std::string eventId;
 
-            pqxx::work txn{C};
-            pqxx::result data = txn.exec("SELECT * FROM cachedbtable ORDER BY cache_id DESC limit 1");
-            if (data.size() != 1)
+            MYSQL_ROW mysqlRow;
+            MYSQL_FIELD *mysqlFields;
+            my_ulonglong numRows;
+            unsigned int numFields;
+
+            string sqlSelStatement = "SELECT * FROM cachedbtable ORDER BY cache_id DESC limit 1";
+            mysqlStatus = mysql_query(MySQLConnection, sqlSelStatement.c_str());
+
+            if (mysqlStatus)
             {
-                printf("thread [%d] Could not read data from from db [%s] \n", arg, C.dbname());
+                throw FFError((char *)mysql_error(MySQLConnection));
             }
-            txn.commit();
+            else
+            {
+                mysqlResult = mysql_store_result(MySQLConnection); // Get the Result Set
+            }
+
+            if (mysqlResult) // there are rows
+            {
+                // # of rows in the result set
+                numRows = mysql_num_rows(mysqlResult);
+
+                // # of Columns (mFields) in the latest results set
+                numFields = mysql_field_count(MySQLConnection);
+
+                // Returns the number of columns in a result set specified
+                numFields = mysql_num_fields(mysqlResult);
+
+                //printf("Number of rows=%u  Number of fields=%u \n", numRows, numFields);
+            }
+            else
+            {
+                printf("Result set is empty");
+            }
+
+            if (mysqlResult)
+            {
+                mysql_free_result(mysqlResult);
+                mysqlResult = NULL;
+            }
 
             /*sleep for 1/10 (100000 us) of second*/
             //usleep(10000);
